@@ -1,0 +1,2 @@
+# Shell 脚本一律 LF：Windows 检出与打包不得引入 CRLF（tar 包内脚本须可在 Linux 直接执行）
+*.sh text eol=lf

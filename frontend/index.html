@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<!-- 仅用于本地开发（pnpm dev 启动 Vite dev server）。
+     生产环境的外壳 HTML 由 Go 端输出（internal/webui/manifest.go），与本文件无关；
+     构建入口仍为 src/main.js（见 vite.config.js rollupOptions.input）。
+     主题预置、favicon 需与 Go 外壳保持一致。 -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PermaPorter · 内网四生态镜像</title>
+  <!-- dev server 由 Vite 从 public/ 提供，不依赖后端是否已启动；生产外壳见 internal/core/webui/manifest.go -->
+  <link rel="icon" type="image/png" href="/logo.png">
+  <script>try{var t=localStorage.getItem('permaporter-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}catch(e){}/* 主题预置，避免闪烁 */</script>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

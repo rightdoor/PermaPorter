@@ -1,0 +1,14 @@
+# 构建产物与运行数据
+data/
+dist/
+node_modules/
+internal/core/webui/assets/
+
+# 本地临时
+.env
+*.exe
+*.log
+
+# 服务器配置文件目录（permaporter.toml 含明文 PG 密码）与 compose 的 PG 数据目录
+/config/
+/pgdata/

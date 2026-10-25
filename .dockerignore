@@ -1,0 +1,13 @@
+# 构建上下文只需 Dockerfile 实际 COPY 的内容：frontend/、cmd/、internal/、
+# go.mod、go.sum、build/。其余本地数据、构建产物与文档一律不入上下文；
+# internal/core/webui/assets 由 web-build 阶段生成后注入，排除本地旧产物防混入。
+.git
+dist/
+data/
+config/
+pgdata/
+docs/
+frontend/node_modules/
+internal/core/webui/assets/
+.commandcode/
+*.md

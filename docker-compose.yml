@@ -1,0 +1,64 @@
+# PermaPorter 容器编排（双模式：内置 SQLite / 外部 PostgreSQL）
+#
+# 用法：
+#   docker compose up -d                                # SQLite 模式（默认）
+#   docker compose --profile postgres up -d             # PostgreSQL 模式（同时拉起 postgres 服务）
+#   首次启动后浏览器打开 http://<host>:9090 完成初始化向导
+#   （数据库未配置时服务进入初始化模式：仅 9090 可访问，向导完成后四个协议端口原地就绪）
+#
+# 应用配置说明：
+#   数据库连接、上游源等一律不在本文件注入——经初始化向导写入 config/permaporter.toml
+#   （容器内 /app/config，取值优先级：配置文件 > 环境变量 > 默认值）。
+#   上游、出站代理、TTL 等运行时配置在控制台「系统配置」按生态修改。
+#   PostgreSQL 模式下，向导"数据库"步骤填写与下方 postgres 服务一致的连接信息：
+#   主机填服务名 postgres、端口 5432、用户名/密码/库名与 POSTGRES_* 一致
+#   （POSTGRES_* 是 postgres 镜像自身的服务端初始化参数，无法移入 permaporter 配置）。
+
+services:
+  permaporter:
+    build:
+      context: .
+      dockerfile: build/docker/Dockerfile
+      args:
+        VERSION: 1.0.0 # 必填，与 Makefile 的 VERSION 保持一致
+    image: permaporter:1.0.0
+    ports:
+      # 端口映射是本文件唯一的应用配置例外（映射无法从配置文件读取）。
+      # 注意：映射须与 permaporter.toml 的对外端口保持一致——容器内由 nginx 反代
+      # （对外 9090-9094 → 后端 8090-8094），修改任一侧须同步另一侧并重建，否则访问失败。
+      - "9090:9090" # 控制台（UI + 管理 API + 初始化向导）
+      - "9091:9091" # npm Registry
+      - "9092:9092" # GOPROXY
+      - "9093:9093" # PyPI Simple
+      - "9094:9094" # Maven 仓库
+    volumes:
+      - ./data:/app/data     # 单库 permaporter.db + 四棵存储树（运行数据）
+      - ./config:/app/config # 服务器配置文件 permaporter.toml（首次启动生成模板，向导写回）
+    # environment:
+    #   INIT_TOKEN: "<初始化向导访问令牌>" # 可选：向导安全门（配置文件生成前生效，只能经环境变量设置）
+    restart: unless-stopped
+    # 注意：不设 depends_on——避免 compose 版本对依赖自动激活 postgres profile 的行为差异；
+    # 向导交互期间 postgres 有充足时间完成首次初始化（healthcheck 就绪）。
+
+  # PostgreSQL 服务（可选）：docker compose --profile postgres up -d 时启用。
+  # POSTGRES_* 为 postgres 镜像自身的服务端凭据与库名（首次初始化时创建）；
+  # 修改后需清空 ./pgdata 才会重新生效（数据目录已初始化后镜像不再读取这些变量）。
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_USER: permaporter
+      POSTGRES_PASSWORD: permaporter
+      POSTGRES_DB: permaporter
+    ports:
+      # 仅供宿主机排障使用；容器网络内向导直接连 postgres:5432，不受此映射影响。
+      # 宿主 5432 已被占用时经 PG_HOST_PORT 覆盖，如：PG_HOST_PORT=15432 docker compose --profile postgres up -d
+      - "${PG_HOST_PORT:-5432}:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data # PG 数据目录（备份与迁移见 docs/deploy.md）
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U permaporter -d permaporter"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped

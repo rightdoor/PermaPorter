@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="430" viewBox="0 0 880 430" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8a94a6"/>
+    </marker>
+  </defs>
+  <style>
+    .port { fill: #ffffff; stroke: #3e6ba0; stroke-width: 1.5; rx: 8; }
+    .mid  { fill: #eef3f9; stroke: #3e6ba0; stroke-width: 1.5; }
+    .bot  { fill: #ffffff; stroke: #8a94a6; stroke-width: 1.5; }
+    .pt   { font-size: 15px; font-weight: 600; fill: #24344d; }
+    .ps   { font-size: 11.5px; fill: #5c6b84; }
+    .mt   { font-size: 14px; font-weight: 600; fill: #24344d; }
+    .ms   { font-size: 11.5px; fill: #5c6b84; }
+    .bt   { font-size: 14px; font-weight: 600; fill: #24344d; }
+    .bs   { font-size: 11.5px; fill: #5c6b84; }
+    .wire { stroke: #8a94a6; stroke-width: 1.4; fill: none; }
+  </style>
+
+  <!-- 五端口入口 -->
+  <text x="440" y="26" text-anchor="middle" font-size="13" fill="#3e6ba0" font-weight="700">五个监听端口</text>
+  <g>
+    <rect class="port" x="18"  y="40" width="152" height="52" rx="8"/>
+    <text class="pt" x="94"  y="62" text-anchor="middle">9090 控制台</text>
+    <text class="ps" x="94"  y="80" text-anchor="middle">SPA + /api 聚合</text>
+
+    <rect class="port" x="186" y="40" width="152" height="52" rx="8"/>
+    <text class="pt" x="262" y="62" text-anchor="middle">9091 npm</text>
+    <text class="ps" x="262" y="80" text-anchor="middle">Registry 协议</text>
+
+    <rect class="port" x="354" y="40" width="152" height="52" rx="8"/>
+    <text class="pt" x="430" y="62" text-anchor="middle">9092 GOPROXY</text>
+    <text class="ps" x="430" y="80" text-anchor="middle">Go modules 协议</text>
+
+    <rect class="port" x="522" y="40" width="152" height="52" rx="8"/>
+    <text class="pt" x="598" y="62" text-anchor="middle">9093 PyPI</text>
+    <text class="ps" x="598" y="80" text-anchor="middle">Simple（PEP 503）</text>
+
+    <rect class="port" x="690" y="40" width="172" height="52" rx="8"/>
+    <text class="pt" x="776" y="62" text-anchor="middle">9094 Maven</text>
+    <text class="ps" x="776" y="80" text-anchor="middle">仓库布局（Gradle 同协议）</text>
+  </g>
+
+  <!-- 连线：9090 → 控制台聚合；9091-9094 → 四生态适配器 -->
+  <path class="wire" d="M 94 92 L 94 130" marker-end="url(#arrow)"/>
+  <path class="wire" d="M 262 92 L 262 118 L 282 118 L 282 130" marker-end="url(#arrow)"/>
+  <path class="wire" d="M 430 92 L 430 130" marker-end="url(#arrow)"/>
+  <path class="wire" d="M 598 92 L 598 118 L 578 118 L 578 130" marker-end="url(#arrow)"/>
+  <path class="wire" d="M 776 92 L 776 130" marker-end="url(#arrow)"/>
+
+  <!-- 中间层：控制台聚合 + 四生态适配器 -->
+  <g>
+    <rect class="mid" x="18" y="130" width="310" height="96" rx="10"/>
+    <text class="mt" x="173" y="156" text-anchor="middle">控制台聚合层（internal/core/web）</text>
+    <text class="ms" x="173" y="178" text-anchor="middle">登录 / 仪表盘 / 缓存管理 / 预热 / 日志 / 配置</text>
+    <text class="ms" x="173" y="198" text-anchor="middle">capture() 进程内直调各生态 handler</text>
+    <text class="ms" x="173" y="216" text-anchor="middle">不向协议端口发起 HTTP 反代</text>
+  </g>
+  <g>
+    <rect class="mid" x="552" y="130" width="310" height="96" rx="10"/>
+    <text class="mt" x="707" y="156" text-anchor="middle">四生态适配器（internal/*adapter）</text>
+    <text class="ms" x="707" y="178" text-anchor="middle">协议引擎 · 永久缓存 · 校验链 · 清理 · 预热</text>
+    <text class="ms" x="707" y="198" text-anchor="middle">go（GOPROXY）· npm · py · mvn</text>
+    <text class="ms" x="707" y="216" text-anchor="middle">只读：协议端口仅 GET/HEAD</text>
+  </g>
+  <path class="wire" d="M 328 178 L 552 178" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text class="ps" x="440" y="170" text-anchor="middle">注入生态句柄（core 不 import adapter）</text>
+
+  <!-- 连线到底层 -->
+  <path class="wire" d="M 173 226 L 173 268" marker-end="url(#arrow)"/>
+  <path class="wire" d="M 707 226 L 707 268" marker-end="url(#arrow)"/>
+  <text class="ps" x="188" y="252">读写</text>
+  <text class="ps" x="722" y="252">读写</text>
+
+  <!-- 底层：单库 + 四棵存储树 -->
+  <g>
+    <rect class="bot" x="18" y="268" width="392" height="118" rx="10"/>
+    <text class="bt" x="214" y="294" text-anchor="middle">单库 SQLite（modernc.org/sqlite，无 CGO）</text>
+    <text class="bs" x="214" y="316" text-anchor="middle">data/permaporter.db · DELETE 日志模式 · 写池单连接</text>
+    <text class="bs" x="214" y="336" text-anchor="middle">表名前缀隔离 + 表白名单断言：</text>
+    <text class="bs" x="214" y="356" text-anchor="middle">go_* · npm_* · py_* · mvn_* · ecosystem_settings</text>
+    <text class="bs" x="214" y="376" text-anchor="middle">platform_settings · schema_version</text>
+  </g>
+  <g>
+    <rect class="bot" x="470" y="268" width="392" height="118" rx="10"/>
+    <text class="bt" x="666" y="294" text-anchor="middle">四棵存储树（产物不可变，临时文件 + 原子改名）</text>
+    <text class="bs" x="666" y="316" text-anchor="middle">storage-go/    modules/&lt;mod&gt;/@v/*（zip/mod/info/list）</text>
+    <text class="bs" x="666" y="336" text-anchor="middle">storage-npm/   meta/*.json · packages/&lt;pkg&gt;/*.tgz</text>
+    <text class="bs" x="666" y="356" text-anchor="middle">storage-py/    packages/*（wheel/sdist）</text>
+    <text class="bs" x="666" y="376" text-anchor="middle">storage-mvn/   &lt;group&gt;/&lt;artifact&gt;/&lt;version&gt;/&lt;file&gt;</text>
+  </g>
+</svg>

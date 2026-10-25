@@ -1,0 +1,35 @@
+# systemd 单元：PermaPorter 五端口包镜像服务
+# 安装：见 install.sh；配置：/etc/default/permaporter（五端口 + 存储路径等）
+[Unit]
+Description=PermaPorter - 内网四生态包镜像（npm 9091 / GOPROXY 9092 / PyPI 9093 / Maven 9094 / 控制台 9090）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=permaporter
+Group=permaporter
+EnvironmentFile=/etc/default/permaporter
+# 配置目录用绝对路径（代码默认 ./config 按进程工作目录解析，属主或目录不对即拒绝启动）；
+# 单元环境文件可覆盖此值
+Environment=CONFIG_DIR=/var/lib/permaporter/config
+WorkingDirectory=/var/lib/permaporter
+ExecStart=/usr/local/bin/permaporter
+Restart=on-failure
+RestartSec=3
+
+# 优雅退出：停收请求 → 四引擎收尾 → 统计落盘
+KillSignal=SIGTERM
+TimeoutStopSec=45
+
+# 安全加固（最小权限思路）；StateDirectory 每次启动确保目录存在且属主为运行用户
+NoNewPrivileges=true
+ProtectSystem=strict
+StateDirectory=permaporter
+StateDirectoryMode=0750
+ReadWritePaths=/var/lib/permaporter
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
