@@ -19,7 +19,7 @@ const driver = ref('sqlite');
 const sqliteDsn = ref(''); // 留空 = 默认 data/permaporter.db
 const pg = reactive({ host: '', port: 5432, user: '', password: '', database: '', sslmode: 'prefer' });
 const ports = reactive({ ui: 9090, npm: 9091, go: 9092, py: 9093, mvn: 9094 });
-const upstreams = reactive({ go: '', goFallback: '', npm: '', py: '', mvn: '' });
+const upstreams = reactive({ go: '', npm: '', py: '', mvn: '' });
 const password = ref('');
 const confirm = ref('');
 
@@ -51,7 +51,6 @@ const PORT_FIELDS = [
 ];
 const UPSTREAM_FIELDS = [
   ['go', 'Go 主上游', 'https://proxy.golang.org'],
-  ['goFallback', 'Go 备用上游（可选）', ''],
   ['npm', 'npm 上游', 'https://registry.npmjs.org'],
   ['py', 'PyPI 上游', 'https://pypi.org/simple/'],
   ['mvn', 'Maven 上游', 'https://repo.maven.apache.org/maven2'],
@@ -70,7 +69,13 @@ async function load() {
     configFile.value = s.configFile || '';
     tokenRequired.value = !!s.initTokenRequired;
     if (s.ports) Object.assign(ports, s.ports);
-    if (s.upstreams) Object.assign(upstreams, s.upstreams);
+    if (s.upstreams) {
+      // 仅取四生态主上游（goFallback 已从向导收集范围移除，备用上游在系统配置按生态设置）
+      upstreams.go = s.upstreams.go || '';
+      upstreams.npm = s.upstreams.npm || '';
+      upstreams.py = s.upstreams.py || '';
+      upstreams.mvn = s.upstreams.mvn || '';
+    }
   } catch (e) {
     if (e?.status === 409 || e?.status === 404) {
       await leaveStale();
@@ -106,7 +111,6 @@ function validateStep() {
       if (!v) return `${label}不能为空`;
       if (!/^https?:\/\//.test(v)) return `${label}必须以 http:// 或 https:// 开头`;
     }
-    if (upstreams.goFallback && !/^https?:\/\//.test(upstreams.goFallback)) return 'Go 备用上游必须以 http:// 或 https:// 开头';
   } else if (id === 'password') {
     if (password.value.length < 6) return '密码长度至少为 6 位';
     if (password.value !== confirm.value) return '两次输入的密码不一致';
@@ -339,9 +343,9 @@ function goLogin() {
           <template v-else-if="currentStep === 'upstream'">
             <label v-for="[key, label, ph] in UPSTREAM_FIELDS" :key="key" class="ui-field">
               <span class="ui-label">{{ label }}</span>
-              <input v-model="upstreams[key]" class="ui-input ui-mono" type="url" :placeholder="ph" :required="key !== 'goFallback'">
+              <input v-model="upstreams[key]" class="ui-input ui-mono" type="url" :placeholder="ph" required>
             </label>
-            <span class="ui-hint">写入各生态初始上游（此后可在「系统配置」按生态修改）。国内网络可替换为镜像源。</span>
+            <span class="ui-hint">写入各生态初始上游（备用上游此后可在「系统配置」按生态设置；国内网络可替换为镜像源）。</span>
           </template>
 
           <!-- ⑤ 管理员密码 -->
