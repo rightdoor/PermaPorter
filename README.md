@@ -66,8 +66,8 @@ make release
 INIT_PASSWORD=<管理员密码> UNATTENDED=1 ./dist/permaporter   # 默认监听 9090-9094（去掉 UNATTENDED 走初始化向导）
 
 # 路径二：容器构建与运行
-make docker-build VERSION=1.0.0
-docker run -d -p 9090-9094:9090-9094 -v permaporter-data:/app/data permaporter:1.0.0
+make docker-build VERSION=1.0.1
+docker run -d -p 9090-9094:9090-9094 -v permaporter-data:/app/data permaporter:1.0.1
 
 # 路径三：docker compose（SQLite 模式 / PostgreSQL 模式）
 docker compose up -d                          # SQLite 模式（默认）

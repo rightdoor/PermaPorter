@@ -16,7 +16,7 @@ endif
 
 APP     := permaporter
 # 版本号唯一来源：升级版本只修改这里，所有构建入口统一使用该值。
-VERSION := 1.0.0
+VERSION := 1.0.1
 GOOS    ?= linux
 GOARCH  ?= amd64
 DIST    := dist
