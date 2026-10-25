@@ -22,8 +22,11 @@ const cleanupState = ref({ go: null, npm: null, py: null, mvn: null });
 const cleanupTimers = { go: null, npm: null, py: null, mvn: null };
 
 const ECO_LABEL = { go: 'Go', npm: 'npm', py: 'Python', mvn: 'Java/Maven' };
-// npm 生态无回退链语义；go/py/mvn 均有备用上游
-const hasFallback = (ecoSide) => ecoSide !== 'npm';
+// 四生态均有备用上游：npm 为候选回退（主源网络错误或非 200 都会尝试备用），
+// go/py/mvn 为 404 即返回的切换语义
+const fallbackHint = (ecoSide) => (ecoSide === 'npm'
+  ? '主源网络错误 / 5xx / 403 / 404 时尝试备用源。'
+  : '主源网络错误 / 5xx / 403 时自动切换；404 不切换。');
 const ecoQuery = (ecoSide) => (ecoSide === 'go' ? '' : `?eco=${ecoSide}`);
 
 const settings = computed(() => ecoSettings.value[eco.value] || {});
@@ -61,9 +64,7 @@ const DRIVER_LABEL = { sqlite: 'SQLite', postgresql: 'PostgreSQL' };
 function saveUpstream(ecoSide) {
   const s = ecoSettings.value[ecoSide] || {};
   saving[ecoSide + 'Upstream'] = true;
-  const body = hasFallback(ecoSide)
-    ? { upstreamUrl: (s.upstreamUrl || '').trim(), fallbackUrl: (s.fallbackUrl || '').trim() }
-    : { upstreamUrl: (s.upstreamUrl || '').trim() };
+  const body = { upstreamUrl: (s.upstreamUrl || '').trim(), fallbackUrl: (s.fallbackUrl || '').trim() };
   api
     .post(`/api/admin/settings/upstream${ecoQuery(ecoSide)}`, body)
     .then(() => notify(`${ECO_LABEL[ecoSide]} 上游配置已保存，立即生效`))
@@ -229,10 +230,10 @@ onUnmounted(() => {
                   {{ eco === 'py' ? 'PyPI Simple 根地址（以 /simple/ 结尾），未命中的锚点页与发行文件从这里拉取。' : eco === 'mvn' ? 'Maven 仓库根地址（如 https://repo.maven.apache.org/maven2），元数据与构件从这里拉取。' : '所有未命中的元数据与产物从这里拉取。' }}
                 </span>
               </label>
-              <label v-if="hasFallback(eco)" class="ui-field">
+              <label class="ui-field">
                 <span class="ui-label">备用上游</span>
-                <input v-model="settings.fallbackUrl" class="ui-input ui-mono" type="url" :placeholder="eco === 'go' ? 'https://proxy.golang.org' : eco === 'py' ? 'https://pypi.org/simple/' : 'https://repo1.maven.org/maven2'">
-                <span class="ui-hint">主源网络错误 / 5xx / 403 时自动切换；404 不切换。{{ eco === 'npm' ? 'npm 生态无回退链。' : '' }}</span>
+                <input v-model="settings.fallbackUrl" class="ui-input ui-mono" type="url" :placeholder="eco === 'go' ? 'https://proxy.golang.org' : eco === 'npm' ? 'https://registry.npmjs.org' : eco === 'py' ? 'https://pypi.org/simple/' : 'https://repo1.maven.org/maven2'">
+                <span class="ui-hint">{{ fallbackHint(eco) }}</span>
               </label>
             </div>
             <div class="ui-row-between">

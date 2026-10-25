@@ -49,7 +49,7 @@ func (db *DB) invalidateSettings() {
 }
 
 // InitSettings 首次初始化：写入 npm 生态配置行（默认主上游、存储目录与 meta_ttl）。
-// npm 侧无回退链语义，fallback_url 写空串；管理员密码不在生态配置内，
+// fallback_url 初始为空（备用上游可在控制台按生态设置）；管理员密码不在生态配置内，
 // 统一存单库 platform_settings。
 func (db *DB) InitSettings(upstream, storageDir string, metaTTL time.Duration) error {
 	_, err := db.Exec(

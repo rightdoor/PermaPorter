@@ -803,6 +803,7 @@ func (e *Engine) fetchJSON(ctx context.Context, settings *models.Settings, urlPa
 	return lastBody, lastStatus, "", fmt.Errorf("上游不可用 (status=%d)", lastStatus)
 }
 
+// upstreamCandidates 生成主/备用上游的候选 URL 列表（主源网络错误或非 200 时依次尝试备用）。
 func upstreamCandidates(settings *models.Settings, urlPath string) []string {
 	candidates := []string{strings.TrimSuffix(settings.UpstreamURL, "/") + urlPath}
 	if settings.FallbackURL != "" {
