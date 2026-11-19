@@ -11,6 +11,12 @@ DATA_DIR=/var/lib/permaporter
 
 [ "$(id -u)" -eq 0 ] || { echo "请用 sudo 运行"; exit 1; }
 
+# 覆盖二进制前判断是否已安装，决定结尾文案（首次安装 / 已更新重启）
+WAS_INSTALLED=0
+if [ -x "$BIN" ] || [ -f "/etc/systemd/system/${SERVICE_NAME}.service" ]; then
+  WAS_INSTALLED=1
+fi
+
 echo "==> 安装二进制"
 install -m 0755 "${SRC_DIR}/permaporter" "$BIN"
 
@@ -37,11 +43,18 @@ echo "==> 安装 systemd 单元"
 install -m 0644 "${SRC_DIR}/permaporter.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 systemctl daemon-reload
 
-echo "==> 启动服务"
-systemctl enable --now "$SERVICE_NAME"
+echo "==> 启用并重启服务"
+# enable：开机自启；restart：无论首次还是更新都确保新二进制生效
+# （enable --now 对已在运行的服务不会重启，更新后进程仍是旧版本）
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"
 
 echo
-echo "安装完成。自检："
+if [ "$WAS_INSTALLED" -eq 1 ]; then
+  echo "已更新并重启。自检："
+else
+  echo "安装完成。自检："
+fi
 echo "  curl http://127.0.0.1:9090/healthz   # 控制台聚合（含 go/npm/py/mvn 四段）"
 echo "  curl http://127.0.0.1:9091/healthz   # npm"
 echo "  curl http://127.0.0.1:9092/healthz   # GOPROXY"

@@ -31,7 +31,7 @@ tar -xzf permaporter-<版本>-linux-amd64.tar.gz && cd permaporter-<版本>-linu
 sudo ./install.sh            # 安装到 /usr/local/bin/permaporter，数据目录 /var/lib/permaporter/data
 ```
 
-`install.sh` 行为：创建系统用户 `permaporter` 与数据/配置目录（0750，属主统一纠正——曾以 root 手工运行遗留的属主文件一并处理）；环境配置写入 `/etc/default/permaporter`（已存在则跳过）；安装并启动 `permaporter.service`（`Restart=on-failure`，`ProtectSystem=strict` + `StateDirectory`/`ReadWritePaths=/var/lib/permaporter` 最小权限加固，单元预设 `CONFIG_DIR=/var/lib/permaporter/config`，`TimeoutStopSec=45` 配合优雅退出）。
+`install.sh` 行为：创建系统用户 `permaporter` 与数据/配置目录（0750，属主统一纠正——曾以 root 手工运行遗留的属主文件一并处理）；环境配置写入 `/etc/default/permaporter`（已存在则跳过）；安装 systemd 单元并 `enable`（开机自启）+ `restart`（确保新二进制生效）——首次安装提示"安装完成"，重复执行提示"已更新并重启"（`Restart=on-failure`，`ProtectSystem=strict` + `StateDirectory`/`ReadWritePaths=/var/lib/permaporter` 最小权限加固，单元预设 `CONFIG_DIR=/var/lib/permaporter/config`，`TimeoutStopSec=45` 配合优雅退出）。
 
 首次初始化：浏览器打开 `http://<host>:9090/`——数据库未配置（未初始化）时控制台自动进入部署向导 `/admin/wizard`，依次完成数据库（SQLite 默认 / PostgreSQL）、端口、上游源与管理员密码；完成后全部端口原地就绪，无需重启。
 
@@ -181,10 +181,8 @@ systemctl start permaporter # 下次启动按目标 schema 重新建库，之后
 ## 升级
 
 1. 备份（见上）。
-2. 停服：`systemctl stop permaporter`（优雅退出，统计落盘）。
-3. 替换二进制（`install.sh` 重复执行即可覆盖 `/usr/local/bin/permaporter`；env/service 已存在则跳过）。
-4. 启服：`systemctl start permaporter`；schema 变更由服务启动时自动初始化（新增生态组件按可加性演进自动补齐）。
-5. 核对版本：`/usr/local/bin/permaporter -version` 或 `curl :9090/healthz` 的 `version` 字段。
+2. 替换二进制并重启：`sudo ./install.sh <tarball 目录>`（覆盖二进制、env/service 已存在则跳过，随后 `enable + restart` 自动重启生效，提示"已更新并重启"；等价于原手工停服/替换/启服三步）。
+3. 核对版本：`/usr/local/bin/permaporter -version` 或 `curl :9090/healthz` 的 `version` 字段；schema 变更由服务启动时自动初始化（新增生态组件按可加性演进自动补齐）。
 
 ## 回滚
 
