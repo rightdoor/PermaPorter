@@ -84,6 +84,9 @@ func (db *DB) backfillAsync() {
 	if err := db.BackfillModuleStats(); err != nil {
 		log.Printf("[database] 回填模块统计列失败(忽略，下次启动重试): %v", err)
 	}
+	if err := db.BackfillLatestVersions(); err != nil {
+		log.Printf("[database] 回填 latest_version 失败(忽略，下次启动重试): %v", err)
+	}
 	if err := db.BackfillDailyFromCache(); err != nil {
 		log.Printf("[database] 回填每日缓存趋势失败(忽略，不影响运行): %v", err)
 	}
@@ -213,6 +216,38 @@ func (db *DB) Ping() error {
 // Optimize 让 SQLite 重新分析索引统计（定期调用，代价很低）。
 func (db *DB) Optimize() {
 	_, _ = db.w.Exec(`PRAGMA optimize`)
+}
+
+// BackfillLatestVersions 为历史数据回填 latest_version（幂等，只处理该列为空但有版本记录的模块）。
+// 仅产物下载路径进来的存量模块在本次修复前没有维护该列，列表页会一直显示最新版本为空；
+// 启动时按已有版本推导一次即可修正，不影响 @latest / @v/list 已缓存的权威值。
+func (db *DB) BackfillLatestVersions() error {
+	rows, err := db.Query(
+		`SELECT id FROM go_modules
+		 WHERE COALESCE(latest_version,'') = ''
+		   AND EXISTS (SELECT 1 FROM go_versions v WHERE v.module_id = go_modules.id)`)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := db.ensureLatestVersion(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // BackfillModuleStats 全量重算模块物化统计列（启动回填与清理后修正历史漂移）。
