@@ -2,6 +2,13 @@
 
 本项目的版本号唯一来源为 [Makefile](Makefile) 的 `VERSION`，格式遵循 Keep a Changelog 1.1.0 规范。
 
+## [1.0.3] - 2026-11-19
+
+### Fixed
+
+- Go 列表页「最新版本」对存量模块仍为空：此前仅在新建版本行时维护 `latest_version`，历史数据里仅走产物下载路径的模块未回填。现于启动时按已有非伪版本推导回填（`BackfillLatestVersions`），幂等且不覆盖 `@latest` / `@v/list` 的权威值。
+- 安装脚本重复执行不重启服务：`install.sh` 原用 `systemctl enable --now`，对已运行服务不会重启，更新二进制后进程仍是旧版本。现改为 `enable` + `restart` 确保新版本生效，并按状态提示「安装完成」或「已更新并重启」；升级文档同步。
+
 ## [1.0.2] - 2026-11-19
 
 ### Added
