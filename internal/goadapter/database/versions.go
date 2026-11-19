@@ -3,6 +3,7 @@ package database
 import (
 	"sort"
 
+	"golang.org/x/mod/module"
 	"golang.org/x/mod/semver"
 
 	"permaporter/internal/goadapter/models"
@@ -42,20 +43,99 @@ func (db *DB) MarkListed(moduleID int64, go_versions []string, isPseudo func(str
 }
 
 // UpsertVersionRow 确保版本记录存在（产物下载流程用），返回版本记录 ID。
+// 新建版本行时同步维护模块的 version_count / latest_version 物化列：产物下载与
+// 预热指定 module@version 的路径不经过 @v/list 的 MarkListed，若不在此重算，
+// 列表页会显示版本数 0、最新版本为空，只有详情页的实时统计才有数据。
 func (db *DB) UpsertVersionRow(moduleID int64, version string, isPseudo bool) (int64, error) {
 	pseudo := 0
 	if isPseudo {
 		pseudo = 1
 	}
-	_, err := db.Exec(
+	res, err := db.Exec(
 		`INSERT INTO go_versions (module_id, version, is_pseudo) VALUES (?, ?, ?)
 		 ON CONFLICT(module_id, version) DO NOTHING`, moduleID, version, pseudo)
 	if err != nil {
 		return 0, err
 	}
+	// 仅新建行才重算：重复下载同一版本无需再推进写代次、打掉页面缓存。
+	if affected, aerr := res.RowsAffected(); aerr == nil && affected > 0 {
+		if err := db.recalcVersionCount(moduleID); err != nil {
+			return 0, err
+		}
+		if err := db.ensureLatestVersion(moduleID); err != nil {
+			return 0, err
+		}
+	}
 	var id int64
 	err = db.QueryRow(`SELECT id FROM go_versions WHERE module_id = ? AND version = ?`, moduleID, version).Scan(&id)
 	return id, err
+}
+
+// recalcVersionCount 重算模块的已知版本总数（与 MarkListed 同口径）。
+func (db *DB) recalcVersionCount(moduleID int64) error {
+	_, err := db.Exec(
+		`UPDATE go_modules SET version_count = (SELECT COUNT(*) FROM go_versions WHERE module_id = ?) WHERE id = ?`,
+		moduleID, moduleID)
+	return err
+}
+
+// ensureLatestVersion 在 latest_version 为空时，按已有非伪版本推导最新版本供列表展示。
+// @latest / @v/list 已缓存的值更权威，非空时不覆盖；这里只兜底"仅产物下载"的模块。
+func (db *DB) ensureLatestVersion(moduleID int64) error {
+	var latest string
+	if err := db.QueryRow(`SELECT COALESCE(latest_version,'') FROM go_modules WHERE id = ?`, moduleID).Scan(&latest); err != nil {
+		return err
+	}
+	if latest != "" {
+		return nil
+	}
+	rows, err := db.Query(`SELECT version FROM go_versions WHERE module_id = ? AND is_pseudo = 0`, moduleID)
+	if err != nil {
+		return err
+	}
+	var versions []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return err
+		}
+		versions = append(versions, v)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	best := deriveLatestFromVersions(versions)
+	if best == "" {
+		return nil
+	}
+	// 条件更新：并发下若另一个请求已写入更权威的 @latest，不覆盖。
+	_, err = db.Exec(
+		`UPDATE go_modules SET latest_version = ? WHERE id = ? AND COALESCE(latest_version,'') = ''`,
+		best, moduleID)
+	return err
+}
+
+// deriveLatestFromVersions 从版本列表推导最新版本：优先最高 release，无 release 时
+// 取最高 prerelease；伪版本与非法 semver 忽略。与 proxy 侧 deriveLatest 口径一致。
+func deriveLatestFromVersions(versions []string) string {
+	valid := make([]string, 0, len(versions))
+	for _, v := range versions {
+		if semver.IsValid(v) && !module.IsPseudoVersion(v) {
+			valid = append(valid, v)
+		}
+	}
+	sort.Slice(valid, func(i, j int) bool { return semver.Compare(valid[i], valid[j]) < 0 })
+	for i := len(valid) - 1; i >= 0; i-- {
+		if semver.Prerelease(valid[i]) == "" {
+			return valid[i]
+		}
+	}
+	if len(valid) > 0 {
+		return valid[len(valid)-1]
+	}
+	return ""
 }
 
 const versionColumns = `id, module_id, version, COALESCE(info_time,''), COALESCE(info_cached_at,''),
