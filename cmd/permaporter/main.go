@@ -63,6 +63,9 @@ func main() {
 	go coreweb.Janitor(sessions, limiter)
 
 	rt := newRuntime()
+	// 空闲内存回收：所有端口连续无业务请求达到阈值后归还空闲堆内存给 OS。
+	// 阈值 0（IDLE_MEM_RECLAIM=0/off）时 Run 立即返回，等价于禁用。
+	rt.startIdleReclaim(cfg.IdleMemReclaim)
 
 	if outcome.Mode == config.BootModeSetup {
 		runSetupMode(cfg, sessions, limiter, rt)
@@ -81,7 +84,7 @@ func main() {
 		_ = uiLn.Close()
 		log.Fatalf("[core] 启动失败，拒绝启动（不监听任何端口）: %v", err)
 	}
-	uiEngine := newEngine(coreweb.AccessLog(""))
+	uiEngine := rt.newEngine(coreweb.AccessLog(""))
 	withConsoleRoutes(uiEngine, cfg, stack, sessions, limiter)
 	rt.serveUI(uiLn, uiEngine)
 	logStarted(cfg, stack.store)
@@ -128,13 +131,14 @@ func logStarted(cfg *config.Config, store *coredatabase.Store) {
 }
 
 // newEngine 构建统一配置的 gin 引擎：可信代理仅本机反代、
-// 访问日志（按生态产物后缀跳过成功下载）、panic 恢复、X-Response-Time。
-func newEngine(accessLog gin.HandlerFunc) *gin.Engine {
+// 访问日志（按生态产物后缀跳过成功下载）、panic 恢复、X-Response-Time、
+// 以及空闲回收请求打点（探针/静态路径跳过）。五端口通用。
+func (rt *runtime) newEngine(accessLog gin.HandlerFunc) *gin.Engine {
 	r := gin.New()
 	if err := r.SetTrustedProxies([]string{"127.0.0.1", "::1"}); err != nil {
 		log.Printf("[core] 设置可信代理失败（沿用默认值）: %v", err)
 	}
-	r.Use(accessLog, gin.Recovery(), coreweb.ResponseTime())
+	r.Use(accessLog, gin.Recovery(), coreweb.ResponseTime(), coreweb.Activity(rt.idleTracker))
 	return r
 }
 

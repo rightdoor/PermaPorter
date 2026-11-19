@@ -214,6 +214,7 @@ MVN_STORAGE_DIR (./data/storage-mvn)
 - **请求与刷新解耦**：元数据刷新与产物下载使用独立的后台 context，客户端断开不会连坐同资源的其他等待者；等待上限 5s，超时先回旧缓存（可用性优先）。
 - **数据库**：单库写池单连接串行（平台与各生态共享一把写锁）+ 读池 4 连接只读；`busy_timeout=30s` 兜底；统计落库错峰对齐墙钟（go 整分、npm 第 20 秒、py 第 40 秒、mvn 第 50 秒），与页面缓存的数据代次（`writeGen`/`statsGen`，各生态各自独立计数）分离，避免统计写放大打掉页面缓存。
 - **优雅退出**：停收请求（`http.Server.Shutdown`，10s）→ 四引擎等待后台任务（`bgWG`，30s 上限）→ 统计落盘（Close 内刷盘）→ 关闭单库。任一端口监听失败即整体退出，避免半可用状态。
+- **闲时内存回收**：五个端口共用一枚进程级 `idle.Tracker`，由 `newEngine` 挂的 `Activity` 中间件在每次业务请求时打点；探针与静态路径（`/healthz`、`/metrics`、`/static/`）不计入活动，避免带监控的部署永不空闲。全部端口连续无业务请求达到 `IDLE_MEM_RECLAIM`（默认 10m，`0`/`off` 禁用）后，后台任务调用 `debug.FreeOSMemory`（内部先 GC 再归还空闲 span）降低 RSS。按"活动边沿"触发——同一空闲周期只回收一次，下一次请求唤醒后重新计时；退出时随 `runtime` 停止。回收不触碰任何生态缓存内容，只归还堆内存（实现见 `internal/core/idle`，装配见 `cmd/permaporter`）。
 
 ## 已知限制（完整版）
 

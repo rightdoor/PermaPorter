@@ -17,6 +17,7 @@ import (
 
 	"permaporter/internal/config"
 	coredatabase "permaporter/internal/core/database"
+	"permaporter/internal/core/idle"
 	"permaporter/internal/core/middleware"
 	"permaporter/internal/core/utils"
 	coreweb "permaporter/internal/core/web"
@@ -38,13 +39,33 @@ import (
 type runtime struct {
 	errCh chan error
 
+	// idleTracker 进程级空闲追踪器：各端口 newEngine 挂 Activity 中间件打点；
+	// 后台回收任务与 HTTP server 生命周期一致，由 startIdleReclaim / stopIdleReclaim 管理。
+	idleTracker *idle.Tracker
+	idleStop    chan struct{}
+	idleOnce    sync.Once
+
 	mu     sync.Mutex
 	stacks []*backendStack
 	uiSrv  *http.Server
 }
 
 func newRuntime() *runtime {
-	return &runtime{errCh: make(chan error, 16)}
+	return &runtime{
+		errCh:       make(chan error, 16),
+		idleTracker: idle.NewTracker(),
+		idleStop:    make(chan struct{}),
+	}
+}
+
+// startIdleReclaim 启动空闲内存回收后台任务。threshold <= 0 表示禁用（Run 立即返回）。
+func (rt *runtime) startIdleReclaim(threshold time.Duration) {
+	go rt.idleTracker.Run(threshold, rt.idleStop)
+}
+
+// stopIdleReclaim 通知后台回收任务退出（幂等）。
+func (rt *runtime) stopIdleReclaim() {
+	rt.idleOnce.Do(func() { close(rt.idleStop) })
 }
 
 func (rt *runtime) addStack(s *backendStack) {
@@ -71,6 +92,9 @@ func (rt *runtime) serveUI(l net.Listener, h http.Handler) *http.Server {
 
 // shutdownAll 优雅退出：先停收 9090 请求，再逐栈收尾（协议端口 → 引擎后台任务 → 统计落盘 → 关库）。
 func (rt *runtime) shutdownAll() {
+	// 先停空闲回收后台任务，避免退出收尾期间还发生 GC
+	rt.stopIdleReclaim()
+
 	rt.mu.Lock()
 	uiSrv := rt.uiSrv
 	stacks := append([]*backendStack(nil), rt.stacks...)
@@ -222,13 +246,13 @@ func bootFullStack(cfg *config.Config, sessions *middleware.SessionStore, limite
 	s.mvnDB.StartStatsFlush(time.Minute, 50*time.Second)
 
 	// ---------- 四个协议端口：同步绑定（失败即报错），成功后异步 Serve ----------
-	rNPM := newEngine(coreweb.AccessLog(".tgz"))
+	rNPM := rt.newEngine(coreweb.AccessLog(".tgz"))
 	npmadapter.RegisterProtocolRoutes(rNPM, s.npmApp)
-	rGO := newEngine(coreweb.AccessLog(".zip"))
+	rGO := rt.newEngine(coreweb.AccessLog(".zip"))
 	goadapter.RegisterProtocolRoutes(rGO, s.goApp)
-	rPY := newEngine(coreweb.AccessLog(".whl"))
+	rPY := rt.newEngine(coreweb.AccessLog(".whl"))
 	pyadapter.RegisterProtocolRoutes(rPY, s.pyApp)
-	rMVN := newEngine(coreweb.AccessLog(".jar"))
+	rMVN := rt.newEngine(coreweb.AccessLog(".jar"))
 	mvnadapter.RegisterProtocolRoutes(rMVN, s.mvnApp)
 	protos := []struct {
 		name   string
@@ -297,7 +321,7 @@ func (s *swapHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // 向导 initialize：全量校验与配置文件写回在 core/web 完成；Boot 在进程内原地装配完整后端
 // 并替换 9090 处理器、启动四个协议端口。
 func runSetupMode(cfg *config.Config, sessions *middleware.SessionStore, limiter *middleware.LoginLimiter, rt *runtime) {
-	setupEngine := newEngine(coreweb.AccessLog(""))
+	setupEngine := rt.newEngine(coreweb.AccessLog(""))
 	swap := &swapHandler{h: setupEngine}
 	sc := &coreweb.SetupConsole{
 		Cfg:       cfg,
@@ -322,7 +346,7 @@ func runSetupMode(cfg *config.Config, sessions *middleware.SessionStore, limiter
 			if err != nil {
 				return err
 			}
-			full := newEngine(coreweb.AccessLog(""))
+			full := rt.newEngine(coreweb.AccessLog(""))
 			withConsoleRoutes(full, &cfg2, st, sessions, limiter)
 			swap.Swap(full)
 			logStarted(&cfg2, st.store)

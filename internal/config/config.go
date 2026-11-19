@@ -39,6 +39,11 @@ type Config struct {
 	MVNUpstream  string        // mvn 生态默认主上游（Maven 仓库根）
 	MetaTTL      time.Duration // 元数据缓存刷新间隔初始值（初始化时写入 ecosystem_settings）
 
+	// IdleMemReclaim 进程空闲内存回收阈值：所有端口连续无请求达到该时长后，
+	// 主动归还空闲堆内存给操作系统（runtime.GC + debug.FreeOSMemory）。
+	// 0 表示禁用。仅进程级配置，不进单库、不进 permaporter.toml。
+	IdleMemReclaim time.Duration
+
 	// ---------- 配置文件层（file.go）----------
 	ConfigPath         string         // permaporter.toml 路径（启动时填充）
 	Database           DatabaseConfig // [database] 段原文（未配置时 Driver 为空）
@@ -85,6 +90,8 @@ func Load() *Config {
 		PyUpstream:   envStr("DEFAULT_PY_UPSTREAM", "https://pypi.org/simple/"),
 		MVNUpstream:  envStr("DEFAULT_MVN_UPSTREAM", "https://repo.maven.apache.org/maven2"),
 		MetaTTL:      envDuration("META_TTL", 2*time.Minute),
+
+		IdleMemReclaim: envIdleDuration("IDLE_MEM_RECLAIM", 10*time.Minute),
 
 		Unattended: os.Getenv("UNATTENDED") == "1",
 		InitToken:  os.Getenv("INIT_TOKEN"),
@@ -199,6 +206,30 @@ func envDuration(key string, def time.Duration) time.Duration {
 		}
 	}
 	return def
+}
+
+// envIdleDuration 读取空闲内存回收阈值（Go duration，如 10m、30s、1h）。
+// 与 envDuration 不同，此处 0 是合法值（表示禁用），因此单独处理：
+// 未设置 → 默认；0/off/false/disable/负数 → 0（禁用）；正数 duration → 该值；
+// 非法字符串 → 回退默认并记告警。
+func envIdleDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "0", "off", "false", "disable", "disabled":
+		return 0
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Printf("[config] %s=%q 不是合法时长，回退默认值 %s", key, v, def)
+		return def
+	}
+	if d < 0 {
+		return 0
+	}
+	return d
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }

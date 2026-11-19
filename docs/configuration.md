@@ -79,6 +79,7 @@ mvn = 9094 # Maven 仓库
 | `DEFAULT_MVN_UPSTREAM` | `https://repo.maven.apache.org/maven2` | mvn 生态默认主上游（Maven 仓库根） |
 | `INIT_PASSWORD` | 空 | 首次启动自动初始化管理员密码（写入 platform_settings；无头/正常模式语义不变） |
 | `META_TTL` | `2m` | 元数据刷新间隔初始值（首次初始化写入 ecosystem_settings，此后以库内值为准；Go duration 格式） |
+| `IDLE_MEM_RECLAIM` | `10m` | 空闲内存回收阈值：所有端口连续无业务请求（探针 `/healthz`、`/metrics` 与 `/static/` 不计）达到该时长后，主动归还空闲堆内存给操作系统（`debug.FreeOSMemory`，内部含一次 GC）。由活跃转空闲的边沿触发一次，直到下一次请求唤醒才重新计时。`0` / `off` / `false` / 负数表示禁用；非法值告警并回退默认。Go duration 格式 |
 | `PPROF` | 空 | `1` 开启 `/debug/pprof`（仅 9090，需管理员登录） |
 | `GIN_MODE` | —— | Gin 框架模式；容器镜像内置 `GIN_MODE=release`（非容器环境无需设置） |
 

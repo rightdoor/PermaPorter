@@ -3,6 +3,7 @@ package config
 import (
 	"runtime"
 	"testing"
+	"time"
 )
 
 // validCfg 返回一份通过校验的基准配置。
@@ -11,6 +12,34 @@ func validCfg() *Config {
 		UIPort: 9090, NPMPort: 9091, GoPort: 9092, PyPort: 9093, MVNPort: 9094,
 		DBDSN:        "file:./data/permaporter.db",
 		GoStorageDir: "./data/storage-go", NPMStorageDir: "./data/storage-npm", PyStorageDir: "./data/storage-py", MVNStorageDir: "./data/storage-mvn",
+	}
+}
+
+// TestEnvIdleDuration 空闲内存回收阈值解析：默认 10m、显式禁用（0/off/负数）、
+// 非法值回退默认。
+func TestEnvIdleDuration(t *testing.T) {
+	const key = "IDLE_MEM_RECLAIM"
+	t.Setenv(key, "") // 未设置 → 默认
+	if got := envIdleDuration(key, 10*time.Minute); got != 10*time.Minute {
+		t.Fatalf("未设置应取默认 10m，实际 %s", got)
+	}
+	for _, off := range []string{"0", "off", "OFF", "false", "disable", "-1m"} {
+		t.Setenv(key, off)
+		if got := envIdleDuration(key, 10*time.Minute); got != 0 {
+			t.Fatalf("%q 应表示禁用（0），实际 %s", off, got)
+		}
+	}
+	for _, tc := range []struct {
+		in   string
+		want time.Duration
+	}{
+		{"10m", 10 * time.Minute}, {"30s", 30 * time.Second}, {"1h", time.Hour},
+		{"garbage", 10 * time.Minute}, // 非法回退默认
+	} {
+		t.Setenv(key, tc.in)
+		if got := envIdleDuration(key, 10*time.Minute); got != tc.want {
+			t.Fatalf("%q 期望 %s，实际 %s", tc.in, tc.want, got)
+		}
 	}
 }
 
